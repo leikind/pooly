@@ -16,7 +16,7 @@ defmodule Pooly.WorkerSupervisor do
   end
 
   def start_child(sup, {m, _, _} = mfa) do
-    spec = %{id: m, start: mfa}
+    spec = %{id: m, start: mfa, restart: :permanent}
     DynamicSupervisor.start_child(sup, spec)
   end
 end

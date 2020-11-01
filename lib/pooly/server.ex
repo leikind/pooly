@@ -66,7 +66,7 @@ defmodule Pooly.Server do
 
   def handle_info(:start_worker_supervisor, %{sup: sup, mfa: mfa, size: size} = state) do
     {:ok, worker_sup} = Supervisor.start_child(sup, supervisor_spec())
-    workers = prepopulate(size, worker_sup, mfa) |> IO.inspect()
+    workers = prepopulate(size, worker_sup, mfa)
 
     {:noreply, %{state | worker_sup: worker_sup, workers: workers}}
   end
