@@ -16,8 +16,6 @@ defmodule Pooly.WorkerSupervisor do
   end
 
   def start_child(sup, {m, _, _} = mfa) do
-    sup |> IO.inspect()
-    mfa |> IO.inspect()
     spec = %{id: m, start: mfa}
     DynamicSupervisor.start_child(sup, spec)
   end
