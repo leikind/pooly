@@ -3,6 +3,7 @@ defmodule Pooly.Server do
 
   use GenServer
   import Supervisor.Spec
+  require Logger
 
   defmodule State do
     @moduledoc false
@@ -69,6 +70,21 @@ defmodule Pooly.Server do
     workers = prepopulate(size, worker_sup, mfa)
 
     {:noreply, %{state | worker_sup: worker_sup, workers: workers}}
+  end
+
+  def handle_info({:DOWN, ref, _, _, _}, %{monitors: monitors, workers: workers} = state) do
+    Logger.info("consumer process finished")
+
+    case :ets.match(monitors, {:"$1", ref}) do
+      [[pid]] ->
+        Logger.info("taking the worker back from the finished consumer process")
+        true = :ets.delete(monitors, pid)
+        new_state = %{state | workers: [pid | workers]}
+        {:noreply, new_state}
+
+      [[]] ->
+        {:noreply, state}
+    end
   end
 
   #####################

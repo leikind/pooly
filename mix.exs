@@ -14,8 +14,7 @@ defmodule Pooly.Mixfile do
 
   def application do
     [
-      applications: [:logger],
-      # hardcoded first.
+      extra_applications: [:logger],
       mod: {Pooly, []}
     ]
   end
