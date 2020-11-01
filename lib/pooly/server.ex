@@ -65,8 +65,9 @@ defmodule Pooly.Server do
   end
 
   def handle_info(:start_worker_supervisor, %{sup: sup, mfa: mfa, size: size} = state) do
-    {:ok, worker_sup} = Supervisor.start_child(sup, supervisor_spec(mfa))
-    workers = prepopulate(size, worker_sup)
+    {:ok, worker_sup} = Supervisor.start_child(sup, supervisor_spec())
+    workers = prepopulate(size, worker_sup, mfa) |> IO.inspect()
+
     {:noreply, %{state | worker_sup: worker_sup, workers: workers}}
   end
 
@@ -74,24 +75,25 @@ defmodule Pooly.Server do
   # Private Functions #
   #####################
 
-  defp prepopulate(size, sup) do
-    prepopulate(size, sup, [])
+  defp prepopulate(size, worker_sup, mfa) do
+    prepopulate(size, worker_sup, mfa, [])
   end
 
-  defp prepopulate(size, _sup, workers) when size < 1 do
+  defp prepopulate(size, _worker_sup, _mfa, workers) when size < 1 do
     workers
   end
 
-  defp prepopulate(size, sup, workers) do
-    prepopulate(size - 1, sup, [new_worker(sup) | workers])
+  defp prepopulate(size, worker_sup, mfa, workers) do
+    prepopulate(size - 1, worker_sup, mfa, [new_worker(worker_sup, mfa) | workers])
   end
 
-  defp new_worker(sup) do
-    {:ok, worker} = Supervisor.start_child(sup, [[]])
+  defp new_worker(worker_sup, mfa) do
+    "new worker" |> IO.inspect()
+    {:ok, worker} = Pooly.WorkerSupervisor.start_child(worker_sup, mfa)
     worker
   end
 
-  defp supervisor_spec({_m, _, _} = mfa) do
+  defp supervisor_spec do
     # %{
     #   id: m,
     #   start: mfa,
@@ -99,6 +101,6 @@ defmodule Pooly.Server do
     #   restart: :temporary
     # }
 
-    supervisor(Pooly.WorkerSupervisor, [mfa], restart: :temporary)
+    supervisor(Pooly.WorkerSupervisor, [], restart: :temporary)
   end
 end

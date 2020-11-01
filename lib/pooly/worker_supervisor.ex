@@ -1,27 +1,24 @@
 defmodule Pooly.WorkerSupervisor do
   @moduledoc false
 
-  use Supervisor
+  use DynamicSupervisor
 
-  def start_link({_, _, _} = mfa) do
-    Supervisor.start_link(__MODULE__, mfa)
+  def start_link do
+    DynamicSupervisor.start_link(__MODULE__, nil)
   end
 
-  def init({m, _f, _a} = mfa) do
-    children = [
-      %{
-        id: m,
-        start: mfa,
-        type: :worker,
-        restart: :permanent
-      }
-    ]
-
-    children
-    |> Supervisor.init(
-      strategy: :simple_one_for_one,
+  def init(_) do
+    DynamicSupervisor.init(
+      strategy: :one_for_one,
       max_restarts: 5,
       max_seconds: 5
     )
+  end
+
+  def start_child(sup, {m, _, _} = mfa) do
+    sup |> IO.inspect()
+    mfa |> IO.inspect()
+    spec = %{id: m, start: mfa}
+    DynamicSupervisor.start_child(sup, spec)
   end
 end
