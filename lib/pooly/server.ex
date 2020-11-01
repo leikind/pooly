@@ -31,6 +31,7 @@ defmodule Pooly.Server do
   #############
 
   def init([sup, [mfa: mfa, size: s]]) when is_pid(sup) do
+    Process.flag(:trap_exit, true)
     monitors = :ets.new(:monitors, [:private])
     state = %State{sup: sup, monitors: monitors, mfa: mfa, size: s}
     send(self(), :start_worker_supervisor)
@@ -82,6 +83,24 @@ defmodule Pooly.Server do
         new_state = %{state | workers: [pid | workers]}
         {:noreply, new_state}
 
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info(
+        {:EXIT, pid, _reason},
+        %{monitors: monitors, workers: workers, worker_sup: worker_sup, mfa: mfa} = state
+      ) do
+    case :ets.lookup(monitors, pid) do
+      [{pid, ref}] ->
+        Logger.info("worker crashed!")
+        true = Process.demonitor(ref)
+        true = :ets.delete(monitors, pid)
+        new_state = %{state | workers: [new_worker(worker_sup, mfa) | workers]}
+
+        {:noreply, new_state}
+
       [[]] ->
         {:noreply, state}
     end
@@ -100,6 +119,7 @@ defmodule Pooly.Server do
 
   defp new_worker(worker_sup, mfa) do
     {:ok, worker} = Pooly.WorkerSupervisor.start_child(worker_sup, mfa)
+    Process.link(worker)
     worker
   end
 

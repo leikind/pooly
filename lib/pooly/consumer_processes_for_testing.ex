@@ -73,4 +73,65 @@ defmodule Pooly.ConsumerProcessesForTesting do
     IO.puts("status after a consumer process has finished without checking in the worker")
     Pooly.Server.status() |> IO.inspect()
   end
+
+  def worker_crashes_in_gen_server_call do
+    spawn(fn ->
+      IO.puts("status")
+      Pooly.Server.status() |> IO.inspect()
+
+      IO.puts("checking out a worker")
+
+      worker = Pooly.Server.checkout()
+
+      IO.puts("status after a checkout")
+      Pooly.Server.status() |> IO.inspect()
+
+      SampleWorker.reverse_word(worker, "hello") |> IO.inspect()
+
+      SampleWorker.crash(worker)
+
+      IO.puts("checking in the worker")
+      Pooly.Server.checkin(worker)
+
+      IO.puts("status after a check-in")
+      Pooly.Server.status() |> IO.inspect()
+    end)
+
+    :timer.sleep(1_000)
+
+    IO.puts("status after a consumer process has crashed")
+    Pooly.Server.status() |> IO.inspect()
+  end
+
+  def worker_crashes_by_itself do
+    spawn(fn ->
+      IO.puts("status")
+      Pooly.Server.status() |> IO.inspect()
+
+      IO.puts("checking out a worker")
+
+      worker = Pooly.Server.checkout()
+
+      IO.puts("status after a checkout")
+      Pooly.Server.status() |> IO.inspect()
+
+      SampleWorker.reverse_word(worker, "hello") |> IO.inspect()
+
+      SampleWorker.crash_later(worker)
+
+      IO.puts("status after a check-in")
+      Pooly.Server.status() |> IO.inspect()
+
+      :timer.sleep(1_000)
+
+      IO.puts("status after a worker has crashed")
+      Pooly.Server.status() |> IO.inspect()
+
+      :timer.sleep(10_000)
+    end)
+
+    :timer.sleep(10_000)
+
+    Pooly.Server.status() |> IO.inspect()
+  end
 end
