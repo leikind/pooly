@@ -6,7 +6,8 @@ defmodule Pooly do
   def start(_type, _args) do
     start_pool(
       mfa: {SampleWorker, :start_link, []},
-      size: 5
+      size: 3,
+      max_overflow: 2
     )
   end
 
