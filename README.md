@@ -1,7 +1,7 @@
 
-Pooly.Server.status()
+Pooly.status()
 
-worker = Pooly.Server.checkout()
+worker = Pooly.checkout()
 
-Pooly.Server.checkin(worker)
+Pooly.checkin(worker)
 

@@ -3,6 +3,8 @@ defmodule Pooly do
 
   use Application
 
+  @timeout 5_000
+
   def start(_type, _args) do
     start_pool(
       mfa: {SampleWorker, :start_link, []},
@@ -15,8 +17,8 @@ defmodule Pooly do
     Pooly.Supervisor.start_link(pool_config)
   end
 
-  def checkout do
-    Pooly.Server.checkout()
+  def checkout(block \\ true, timeout \\ @timeout) do
+    Pooly.Server.checkout(block, timeout)
   end
 
   def checkin(worker_pid) do

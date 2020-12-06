@@ -7,15 +7,25 @@ defmodule Pooly.Server do
 
   defmodule State do
     @moduledoc false
-    defstruct [:sup, :worker_sup, :monitors, :size, :workers, :mfa, :max_overflow, overflow: 0]
+    defstruct [
+      :sup,
+      :worker_sup,
+      :monitors,
+      :size,
+      :workers,
+      :mfa,
+      :max_overflow,
+      :waiting,
+      overflow: 0
+    ]
   end
 
   def start_link(sup, pool_config) do
     GenServer.start_link(__MODULE__, [sup, pool_config], name: __MODULE__)
   end
 
-  def checkout do
-    GenServer.call(__MODULE__, :checkout)
+  def checkout(block, timeout) do
+    GenServer.call(__MODULE__, {:checkout, block}, timeout)
   end
 
   def checkin(worker_pid) do
@@ -33,19 +43,29 @@ defmodule Pooly.Server do
   def init([sup, [mfa: mfa, size: s, max_overflow: max_overflow]]) when is_pid(sup) do
     Process.flag(:trap_exit, true)
     monitors = :ets.new(:monitors, [:private])
-    state = %State{sup: sup, monitors: monitors, mfa: mfa, size: s, max_overflow: max_overflow}
+
+    state = %State{
+      sup: sup,
+      monitors: monitors,
+      mfa: mfa,
+      size: s,
+      max_overflow: max_overflow,
+      waiting: :queue.new()
+    }
+
     send(self(), :start_worker_supervisor)
     {:ok, state}
   end
 
   def handle_call(
-        :checkout,
-        {from_pid, _ref},
+        {:checkout, block},
+        {from_pid, _ref} = from,
         %{
           workers: workers,
           monitors: monitors,
           max_overflow: max_overflow,
           overflow: overflow,
+          waiting: waiting,
           worker_sup: worker_sup,
           mfa: mfa
         } = state
@@ -61,6 +81,11 @@ defmodule Pooly.Server do
         ref = Process.monitor(from_pid)
         true = :ets.insert(monitors, {worker, ref})
         {:reply, worker, %{state | overflow: overflow + 1}}
+
+      [] when block == true ->
+        ref = Process.monitor(from_pid)
+        waiting = :queue.in({from, ref}, waiting)
+        {:noreply, %{state | waiting: waiting}, :infinity}
 
       [] ->
         {:reply, :noproc, state}
@@ -146,26 +171,56 @@ defmodule Pooly.Server do
   #####################
 
   def handle_worker_exit(
-        %{worker_sup: worker_sup, mfa: mfa, workers: workers, overflow: overflow} = state
+        %{
+          worker_sup: worker_sup,
+          mfa: mfa,
+          workers: workers,
+          overflow: overflow,
+          monitors: monitors,
+          waiting: waiting
+        } = state
       ) do
-    if overflow > 0 do
-      %{state | overflow: overflow - 1}
-    else
-      replacement_worker = new_worker(worker_sup, mfa)
-      %{state | workers: [replacement_worker | workers]}
+    case :queue.out(waiting) do
+      {{:value, {from, ref}}, left} ->
+        replacement_worker = new_worker(worker_sup, mfa)
+        true = :ets.insert(monitors, {replacement_worker, ref})
+        GenServer.reply(from, replacement_worker)
+        %{state | waiting: left}
+
+      {:empty, empty} when overflow > 0 ->
+        %{state | overflow: overflow - 1, waiting: empty}
+
+      {:empty, empty} ->
+        replacement_worker = new_worker(worker_sup, mfa)
+        %{state | workers: [replacement_worker | workers], waiting: empty}
     end
   end
 
   def handle_checkin(
         worker_pid,
-        %{workers: workers, overflow: overflow, worker_sup: worker_sup} = state
+        %{
+          workers: workers,
+          overflow: overflow,
+          worker_sup: worker_sup,
+          waiting: waiting,
+          monitors: monitors
+        } = state
       ) do
-    if overflow > 0 do
-      true = Process.unlink(worker_pid)
-      DynamicSupervisor.terminate_child(worker_sup, worker_pid)
-      %{state | overflow: overflow - 1}
-    else
-      %{state | workers: [worker_pid | workers]}
+    case :queue.out(waiting) do
+      {{:value, {from, ref}}, left} ->
+        # hand over the worker to a waiting consumer
+        true = :ets.insert(monitors, {worker_pid, ref})
+        GenServer.reply(from, worker_pid)
+        %{state | waiting: left}
+
+      {:empty, empty} when overflow > 0 ->
+        true = Process.unlink(worker_pid)
+        DynamicSupervisor.terminate_child(worker_sup, worker_pid)
+        # `waiting: empty` can be dropped I think
+        %{state | waiting: empty, overflow: overflow - 1}
+
+      {:empty, empty} ->
+        %{state | waiting: empty, workers: [worker_pid | workers]}
     end
   end
 
