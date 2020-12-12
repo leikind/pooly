@@ -16,7 +16,8 @@ defmodule Pooly.WorkerSupervisor do
   end
 
   def start_child(sup, {m, _, _} = mfa) do
-    # Pooly.Server will restart it
+    # Setting restart to :temporary because Pooly.Server will restart it
+    # so here we will just let it die
     spec = %{id: m, start: mfa, restart: :temporary}
     DynamicSupervisor.start_child(sup, spec)
   end

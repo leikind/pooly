@@ -6,15 +6,19 @@ defmodule Pooly do
   @timeout 5_000
 
   def start(_type, _args) do
-    start_pool(
-      mfa: {SampleWorker, :start_link, []},
-      size: 3,
-      max_overflow: 2
-    )
-  end
+    pool_config = [mfa: {SampleWorker, :start_link, []}, size: 3, max_overflow: 2]
 
-  def start_pool(pool_config) do
-    Pooly.Supervisor.start_link(pool_config)
+    children = [
+      %{
+        id: Pooly.Supervisor,
+        start: {Pooly.Supervisor, :start_link, [pool_config]},
+        type: :supervisor
+      }
+    ]
+
+    opts = [strategy: :one_for_one, name: Pooly.TopSupervisor]
+
+    children |> Supervisor.start_link(opts)
   end
 
   def checkout(block \\ true, timeout \\ @timeout) do
