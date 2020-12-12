@@ -1,6 +1,7 @@
 defmodule Pooly.Server do
   @moduledoc false
 
+  alias Pooly.WorkerSupervisor
   use GenServer
   require Logger
 
@@ -132,7 +133,7 @@ defmodule Pooly.Server do
   end
 
   def handle_info(:start_workers, %{mfa: mfa, size: size, pool_name: pool_name} = state) do
-    [{worker_sup, _} | _] = Registry.lookup(PoolRegistry, Pooly.WorkerSupervisor.name(pool_name))
+    [{worker_sup, _} | _] = Registry.lookup(PoolRegistry, WorkerSupervisor.name(pool_name))
 
     workers = prepopulate(size, worker_sup, mfa)
 
@@ -235,7 +236,7 @@ defmodule Pooly.Server do
   end
 
   defp new_worker(worker_sup, mfa) do
-    {:ok, worker} = Pooly.WorkerSupervisor.start_child(worker_sup, mfa)
+    {:ok, worker} = WorkerSupervisor.start_child(worker_sup, mfa)
     Process.link(worker)
     worker
   end

@@ -1,6 +1,8 @@
-defmodule Pooly.Supervisor do
+defmodule Pooly.OnePoolSupervisor do
   @moduledoc false
   use Supervisor
+
+  alias Pooly.{Server, WorkerSupervisor}
 
   def start_link(%{pool_name: pool_name} = pool_config) do
     Supervisor.start_link(__MODULE__, pool_config, name: via(pool_name))
@@ -9,14 +11,14 @@ defmodule Pooly.Supervisor do
   def init(%{pool_name: pool_name} = pool_config) do
     children = [
       %{
-        id: Pooly.WorkerSupervisor,
-        start: {Pooly.WorkerSupervisor, :start_link, [pool_name]},
+        id: WorkerSupervisor,
+        start: {WorkerSupervisor, :start_link, [pool_name]},
         type: :supervisor,
         restart: :temporary
       },
       %{
-        id: Pooly.Server,
-        start: {Pooly.Server, :start_link, [pool_config]},
+        id: Server,
+        start: {Server, :start_link, [pool_config]},
         type: :worker,
         restart: :permanent
       }
