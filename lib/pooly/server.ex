@@ -2,13 +2,11 @@ defmodule Pooly.Server do
   @moduledoc false
 
   use GenServer
-  import Supervisor.Spec
   require Logger
 
   defmodule State do
     @moduledoc false
     defstruct [
-      :sup,
       :worker_sup,
       :monitors,
       :size,
@@ -16,44 +14,48 @@ defmodule Pooly.Server do
       :mfa,
       :max_overflow,
       :waiting,
+      :pool_name,
       overflow: 0
     ]
   end
 
-  def start_link(sup, pool_config) do
-    GenServer.start_link(__MODULE__, [sup, pool_config], name: __MODULE__)
+  defp name(pool_name), do: {pool_name, "server"}
+  defp via(pool_name), do: {:via, Registry, {PoolRegistry, name(pool_name)}}
+
+  def start_link(%{pool_name: pool_name} = pool_config) do
+    GenServer.start_link(__MODULE__, pool_config, name: via(pool_name))
   end
 
-  def checkout(block, timeout) do
-    GenServer.call(__MODULE__, {:checkout, block}, timeout)
+  def checkout(pool_name, block, timeout) do
+    GenServer.call(via(pool_name), {:checkout, block}, timeout)
   end
 
-  def checkin(worker_pid) do
-    GenServer.cast(__MODULE__, {:checkin, worker_pid})
+  def checkin(pool_name, worker_pid) do
+    GenServer.cast(via(pool_name), {:checkin, worker_pid})
   end
 
-  def status do
-    GenServer.call(__MODULE__, :status)
+  def status(pool_name) do
+    GenServer.call(via(pool_name), :status)
   end
 
   #############
   # Callbacks #
   #############
 
-  def init([sup, [mfa: mfa, size: s, max_overflow: max_overflow]]) when is_pid(sup) do
+  def init(%{mfa: mfa, size: s, max_overflow: max_overflow, pool_name: pool_name}) do
     Process.flag(:trap_exit, true)
     monitors = :ets.new(:monitors, [:private])
 
     state = %State{
-      sup: sup,
       monitors: monitors,
       mfa: mfa,
       size: s,
       max_overflow: max_overflow,
-      waiting: :queue.new()
+      waiting: :queue.new(),
+      pool_name: pool_name
     }
 
-    send(self(), :start_worker_supervisor)
+    send(self(), :start_workers)
     {:ok, state}
   end
 
@@ -129,8 +131,9 @@ defmodule Pooly.Server do
     end
   end
 
-  def handle_info(:start_worker_supervisor, %{sup: sup, mfa: mfa, size: size} = state) do
-    {:ok, worker_sup} = Supervisor.start_child(sup, supervisor_spec())
+  def handle_info(:start_workers, %{mfa: mfa, size: size, pool_name: pool_name} = state) do
+    [{worker_sup, _} | _] = Registry.lookup(PoolRegistry, Pooly.WorkerSupervisor.name(pool_name))
+
     workers = prepopulate(size, worker_sup, mfa)
 
     {:noreply, %{state | worker_sup: worker_sup, workers: workers}}
@@ -235,16 +238,5 @@ defmodule Pooly.Server do
     {:ok, worker} = Pooly.WorkerSupervisor.start_child(worker_sup, mfa)
     Process.link(worker)
     worker
-  end
-
-  defp supervisor_spec do
-    # %{
-    #   id: m,
-    #   start: mfa,
-    #   type: :supervisor,
-    #   restart: :temporary
-    # }
-
-    supervisor(Pooly.WorkerSupervisor, [], restart: :temporary)
   end
 end
