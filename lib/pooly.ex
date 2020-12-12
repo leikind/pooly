@@ -13,11 +13,23 @@ defmodule Pooly do
       max_overflow: 2
     }
 
+    pool_config2 = %{
+      pool_name: "pool-2",
+      mfa: {SampleWorker, :start_link, []},
+      size: 5,
+      max_overflow: 1
+    }
+
     children = [
       {Registry, keys: :unique, name: PoolRegistry},
       %{
         id: Pooly.Supervisor1,
         start: {Pooly.Supervisor, :start_link, [pool_config1]},
+        type: :supervisor
+      },
+      %{
+        id: Pooly.Supervisor2,
+        start: {Pooly.Supervisor, :start_link, [pool_config2]},
         type: :supervisor
       }
     ]
